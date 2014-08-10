@@ -10,11 +10,15 @@ import (
 	"github.com/go-martini/martini"
 	"io/ioutil"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
 type Repository struct {
-	Name string
+	Name     string
+	CloneUrl string `json:"clone_url"`
 }
 
 type GithubResponse struct {
@@ -36,8 +40,69 @@ func init() {
 	flag.Parse()
 }
 
+func shipRepository(dirname string) bool {
+	d, err := os.Open(dirname)
+	if err != nil {
+		fmt.Println(err)
+		return false
+	}
+	defer d.Close()
+
+	files, err := d.Readdir(-1)
+	if err != nil {
+		fmt.Println(err)
+		return false
+	}
+
+	fmt.Println("Searching for a .cabal file in " + dirname)
+
+	cabalFile := ""
+	for _, file := range files {
+		if file.Mode().IsRegular() {
+			if filepath.Ext(file.Name()) == ".cabal" {
+				cabalFile = file.Name()
+				break
+			}
+		}
+	}
+
+	if cabalFile != "" {
+		fmt.Println(".cabal file found:", cabalFile)
+		cmd := exec.Command("cabal", "sdist")
+		cmd.Path = dirname
+		outBs, err := cmd.Output()
+		if err == nil {
+			fmt.Println("Generated .tar.gz for hackage!")
+			fmt.Println("TODO: Upload....")
+			return true
+		} else {
+			fmt.Println(string(outBs))
+			fmt.Println(err)
+			return false
+		}
+	}
+
+	return false
+}
+
 func handleRelease(resp *GithubResponse) {
-	fmt.Println("New release:", resp.Ref, resp.RefType)
+	if resp.RefType == "tag" {
+		fmt.Println("new tag detected:", resp.Ref)
+		tmpDir, _ := ioutil.TempDir("", "hackageshipdir")
+		cmd := exec.Command("git", "clone", resp.Repository.CloneUrl, tmpDir)
+		outBs, err := cmd.Output()
+		if err == nil {
+			if !shipRepository(tmpDir) {
+				fmt.Println("Something bad happened :-(")
+			}
+		} else {
+			fmt.Println("Something went wrong while trying to clone", resp.Repository.CloneUrl, "into", tmpDir)
+			fmt.Println(string(outBs))
+			fmt.Println(err)
+		}
+
+		os.Remove(tmpDir)
+	}
 }
 
 func main() {
