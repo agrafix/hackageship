@@ -9,6 +9,7 @@ import (
 	"github.com/go-martini/martini"
 	"io/ioutil"
 	"net/http"
+	"strings"
 )
 
 func CheckHMAC(message, messageMAC, key []byte) bool {
@@ -26,13 +27,15 @@ func init() {
 
 func main() {
 	m := martini.Classic()
-	m.Get("/hook/:user/:repo", func(res http.ResponseWriter, req *http.Request, params martini.Params) string {
+	m.Post("/hook/:user/:repo", func(res http.ResponseWriter, req *http.Request, params martini.Params) string {
 		user := params["user"]
 		repo := params["repo"]
 		eventType := req.Header.Get("X-GitHub-Event")
 		eventDelivery := req.Header.Get("X-GitHub-Delivery")
 		signature := req.Header.Get("X-Hub-Signature")
+		signature = strings.Replace(signature, "sha1=", "", -1)
 		fmt.Println("Hook called for", user, "/", repo, "Event:", eventType, "-", eventDelivery)
+		fmt.Println("Signature:", signature)
 
 		if b, err := ioutil.ReadAll(req.Body); err == nil {
 			sigBytes, sigError := hex.DecodeString(signature)
