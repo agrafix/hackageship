@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/go-martini/martini"
@@ -11,6 +12,14 @@ import (
 	"net/http"
 	"strings"
 )
+
+type Repository struct {
+	Name string
+}
+
+type GithubResponse struct {
+	Repository Repository
+}
 
 func CheckHMAC(message, messageMAC, key []byte) bool {
 	mac := hmac.New(sha1.New, key)
@@ -42,7 +51,17 @@ func main() {
 			bv := []byte(*cfgSecret)
 
 			if sigError == nil && CheckHMAC(b, sigBytes, bv) {
-				fmt.Println("Body:", b)
+				var data GithubResponse
+				err = json.Unmarshal(b, &data)
+				if err == nil {
+					res.WriteHeader(200)
+					return "OK"
+				} else {
+					fmt.Println("Failed to decode json:", err)
+					res.WriteHeader(500)
+					return "Could not parse the json!"
+				}
+
 				res.WriteHeader(200)
 				return "ok"
 			} else {
