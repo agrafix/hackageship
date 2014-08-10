@@ -13,12 +13,22 @@ import (
 	"strings"
 )
 
+type Author struct {
+	Login string
+}
+
 type Repository struct {
 	Name string
 }
 
+type ReleaseInfo struct {
+	TagName string `json:"tag_name"`
+	Author  Author
+}
+
 type GithubResponse struct {
 	Repository Repository
+	Release    ReleaseInfo
 }
 
 func CheckHMAC(message, messageMAC, key []byte) bool {
@@ -32,6 +42,10 @@ var cfgSecret = flag.String("secret", "", "Github Webhook Secret")
 
 func init() {
 	flag.Parse()
+}
+
+func handleRelease(resp *GithubResponse) {
+	fmt.Println("New release:", resp.Release.TagName)
 }
 
 func main() {
@@ -51,19 +65,24 @@ func main() {
 			bv := []byte(*cfgSecret)
 
 			if sigError == nil && CheckHMAC(b, sigBytes, bv) {
-				var data GithubResponse
-				err = json.Unmarshal(b, &data)
-				if err == nil {
+				if eventType == "release" {
+					fmt.Println("Release detected")
+					var data GithubResponse
+					err = json.Unmarshal(b, &data)
+					if err == nil {
+						handleRelease(&data)
+						res.WriteHeader(200)
+						return "OK"
+					} else {
+						fmt.Println("Failed to decode json:", err)
+						res.WriteHeader(500)
+						return "Could not parse the json!"
+					}
+				} else {
+					fmt.Println("Not a release!")
 					res.WriteHeader(200)
 					return "OK"
-				} else {
-					fmt.Println("Failed to decode json:", err)
-					res.WriteHeader(500)
-					return "Could not parse the json!"
 				}
-
-				res.WriteHeader(200)
-				return "ok"
 			} else {
 				res.WriteHeader(500)
 				return "Invalid X-Hub-Signature!"
