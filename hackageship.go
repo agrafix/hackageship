@@ -13,22 +13,14 @@ import (
 	"strings"
 )
 
-type Author struct {
-	Login string
-}
-
 type Repository struct {
 	Name string
 }
 
-type ReleaseInfo struct {
-	TagName string `json:"tag_name"`
-	Author  Author
-}
-
 type GithubResponse struct {
 	Repository Repository
-	Release    ReleaseInfo
+	Ref        string
+	RefType    string `json:"ref_type"`
 }
 
 func CheckHMAC(message, messageMAC, key []byte) bool {
@@ -45,7 +37,7 @@ func init() {
 }
 
 func handleRelease(resp *GithubResponse) {
-	fmt.Println("New release:", resp.Release.TagName)
+	fmt.Println("New release:", resp.Ref, resp.RefType)
 }
 
 func main() {
@@ -65,8 +57,8 @@ func main() {
 			bv := []byte(*cfgSecret)
 
 			if sigError == nil && CheckHMAC(b, sigBytes, bv) {
-				if eventType == "release" {
-					fmt.Println("Release detected")
+				if eventType == "create" {
+					fmt.Println("Create event!")
 					var data GithubResponse
 					err = json.Unmarshal(b, &data)
 					if err == nil {
