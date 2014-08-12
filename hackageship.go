@@ -70,20 +70,24 @@ func shipRepository(dirname string) bool {
 
 	if cabalFile != "" {
 		fmt.Println(".cabal file found:", cabalFile)
+		currDir, _ := os.Getwd()
+		os.Chdir(dirname)
 		cmd := exec.Command("cabal", "sdist")
-		cmd.Path = dirname
 		outBs, err := cmd.Output()
+		os.Chdir(currDir)
 		if err == nil {
 			fmt.Println("Generated .tar.gz for hackage!")
 			fmt.Println("TODO: Upload....")
 			return true
 		} else {
+			fmt.Println("Failed to run cabal sdist")
 			fmt.Println(string(outBs))
 			fmt.Println(err)
 			return false
 		}
 	}
 
+	fmt.Println("Cabal file not found")
 	return false
 }
 
@@ -104,7 +108,6 @@ func handleRelease(resp *GithubResponse) {
 		outBs, err := cmd.Output()
 		if err == nil {
 			shipRepository(tmpDir)
-			fmt.Println("Work enqueued")
 		} else {
 			fmt.Println("Something went wrong while trying to clone", resp.Repository.CloneUrl, "into", tmpDir)
 			fmt.Println(string(outBs))
@@ -134,7 +137,7 @@ func main() {
 
 			if sigError == nil && CheckHMAC(b, sigBytes, bv) {
 				if eventType == "create" {
-					fmt.Println("Create event!")
+					fmt.Println("Recieved a create event")
 					var data GithubResponse
 					err = json.Unmarshal(b, &data)
 					if err == nil {
@@ -147,7 +150,7 @@ func main() {
 						return "Could not parse the json!"
 					}
 				} else {
-					fmt.Println("Not a release!")
+					fmt.Println("Recieved some random event")
 					res.WriteHeader(200)
 					return "OK"
 				}
