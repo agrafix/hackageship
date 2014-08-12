@@ -77,7 +77,7 @@ func uploadFile(uri string, paramName, path string) (int, error) {
 	}
 
 	client := &http.Client{}
-	req.SetBasicAuth(hackageUser, hackagePass)
+	req.SetBasicAuth(*hackageUser, *hackagePass)
 	resp, respError := client.Do(req)
 	if respError != nil {
 		return 0, respError
