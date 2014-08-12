@@ -104,6 +104,7 @@ func RunCmd(name string, arg ...string) error {
 	logOutput := "$ " + name + " "
 	for _, argV := range arg {
 		logOutput += argV
+		logOutput += " "
 	}
 	fmt.Println(logOutput)
 
@@ -160,13 +161,13 @@ func cabalDist(resp *GithubResponse, dirname string, cabalFile string) bool {
 		fileLocation := filepath.Join(dirname, "dist", cabalName+"-"+cabalVers+".tar.gz")
 		if _, err := os.Stat(fileLocation); err == nil {
 			fmt.Println("Generated", fileLocation, "for hackage, uploading...")
-			hackageUrl := "http://" + *hackageUser + ":" + *hackagePass + "@hackage.haskell.org/packages/"
+			hackageUrl := "http://" + *hackageUser + ":" + *hackagePass + "@hackage.haskell.org/packages/upload"
 			statusCode, err := uploadFile(hackageUrl, "package", fileLocation)
 			if err == nil && statusCode == 200 {
 				fmt.Println("All good!")
 				return true
 			}
-			fmt.Println("Upload failed! Status", statusCode, "Error:", err)
+			fmt.Println("Upload to", hackageUrl, "failed! Status", statusCode, "Error:", err)
 		} else {
 			fmt.Println("Failed to generated package:", fileLocation)
 		}
