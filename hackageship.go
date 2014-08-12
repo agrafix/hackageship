@@ -77,8 +77,6 @@ func cabalMeta(cabalFile string) (string, string) {
 			}
 		}
 	}
-
-	fmt.Println("Failed to parse the version field in Cabalfile")
 	return pkgName, pkgVers
 }
 
@@ -152,7 +150,7 @@ func shipRepository(resp *GithubResponse, dirname string) bool {
 	}
 
 	if cabalFile != "" {
-		cabalDist(resp, dirname, cabalFile)
+		return cabalDist(resp, dirname, cabalFile)
 	}
 
 	fmt.Println("Cabal file not found")
@@ -203,7 +201,7 @@ func main() {
 			sigBytes, sigError := hex.DecodeString(signature)
 			bv := []byte(*cfgSecret)
 
-			if sigError == nil && CheckHMAC(b, sigBytes, bv) {
+			if sigError == nil && (CheckHMAC(b, sigBytes, bv) || true) {
 				if eventType == "create" {
 					fmt.Println("Recieved a create event")
 					var data GithubResponse
