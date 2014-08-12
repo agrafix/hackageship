@@ -77,6 +77,7 @@ func uploadFile(uri string, paramName, path string) (int, error) {
 	}
 
 	client := &http.Client{}
+	req.SetBasicAuth(hackageUser, hackagePass)
 	resp, respError := client.Do(req)
 	if respError != nil {
 		return 0, respError
@@ -161,7 +162,7 @@ func cabalDist(resp *GithubResponse, dirname string, cabalFile string) bool {
 		fileLocation := filepath.Join(dirname, "dist", cabalName+"-"+cabalVers+".tar.gz")
 		if _, err := os.Stat(fileLocation); err == nil {
 			fmt.Println("Generated", fileLocation, "for hackage, uploading...")
-			hackageUrl := "http://" + *hackageUser + ":" + *hackagePass + "@hackage.haskell.org/packages/upload"
+			hackageUrl := "http://hackage.haskell.org/packages/upload"
 			statusCode, err := uploadFile(hackageUrl, "package", fileLocation)
 			if err == nil && statusCode == 200 {
 				fmt.Println("All good!")
