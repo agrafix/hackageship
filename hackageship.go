@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/hex"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -28,6 +30,8 @@ type GithubResponse struct {
 }
 
 var WorkQueue = make(chan *GithubResponse, 100)
+var CabalVersionRegex = regexp.MustCompile(`version:\s+([0-9.]+)`)
+var CabalNameRegex = regexp.MustCompile(`name:\s+([^\s]+)`)
 
 func CheckHMAC(message, messageMAC, key []byte) bool {
 	mac := hmac.New(sha1.New, key)
@@ -42,7 +46,86 @@ func init() {
 	flag.Parse()
 }
 
-func shipRepository(dirname string) bool {
+func readLines(path string) ([]string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var lines []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	return lines, scanner.Err()
+}
+
+func cabalMeta(cabalFile string) (string, string) {
+	lines, err := readLines(cabalFile)
+	pkgVers := "-error-"
+	pkgName := "-error-"
+
+	if err == nil {
+		for _, line := range lines {
+			if CabalVersionRegex.MatchString(line) {
+				matches := CabalVersionRegex.FindStringSubmatch(line)
+				pkgVers = matches[1]
+			} else if CabalNameRegex.MatchString(line) {
+				matches := CabalNameRegex.FindStringSubmatch(line)
+				pkgName = matches[1]
+			}
+		}
+	}
+
+	fmt.Println("Failed to parse the version field in Cabalfile")
+	return pkgName, pkgVers
+}
+
+func cabalDist(resp *GithubResponse, dirname string, cabalFile string) bool {
+	fmt.Println(".cabal file found:", cabalFile)
+	cabalName, cabalVers := cabalMeta(cabalFile)
+	fmt.Println("Package name is", cabalName)
+	if cabalVers != resp.Ref {
+		fmt.Println("Your cabalfile says your package is version", cabalVers, "but your git tag specifies version", resp.Ref)
+		return false
+	}
+
+	currDir, _ := os.Getwd()
+	os.Chdir(dirname)
+
+	// checkout the correct tag
+	checkoutCmd := exec.Command("git", "checkout", "tags/"+resp.Ref)
+	checkoutCmd.Stdout = os.Stdout
+	checkoutCmd.Stderr = os.Stderr
+	if err := checkoutCmd.Run(); err != nil {
+		fmt.Println("Failed to checkout the provided tag!")
+		return false
+	}
+
+	// package the cabal dist package
+	cmd := exec.Command("cabal", "sdist")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+	os.Chdir(currDir)
+	if err == nil {
+		fileLocation := filepath.Join(dirname, cabalName+"-"+cabalVers+".tar.gz")
+		if _, err := os.Stat(fileLocation); err == nil {
+			fmt.Println("Generated", fileLocation, "for hackage!")
+			fmt.Println("TODO: Upload")
+			return true
+		} else {
+			fmt.Println("Failed to generated package:", fileLocation)
+		}
+	} else {
+		fmt.Println("Failed to run cabal sdist")
+	}
+
+	return false
+}
+
+func shipRepository(resp *GithubResponse, dirname string) bool {
 	d, err := os.Open(dirname)
 	if err != nil {
 		fmt.Println(err)
@@ -69,23 +152,7 @@ func shipRepository(dirname string) bool {
 	}
 
 	if cabalFile != "" {
-		fmt.Println(".cabal file found:", cabalFile)
-		currDir, _ := os.Getwd()
-		os.Chdir(dirname)
-		cmd := exec.Command("cabal", "sdist")
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		err := cmd.Run()
-		os.Chdir(currDir)
-		if err == nil {
-			fmt.Println("Generated .tar.gz for hackage!")
-			fmt.Println("TODO: Upload....")
-			return true
-		} else {
-			fmt.Println("Failed to run cabal sdist")
-			fmt.Println(err)
-			return false
-		}
+		cabalDist(resp, dirname, cabalFile)
 	}
 
 	fmt.Println("Cabal file not found")
@@ -108,7 +175,7 @@ func handleRelease(resp *GithubResponse) {
 		cmd := exec.Command("git", "clone", resp.Repository.CloneUrl, tmpDir)
 		outBs, err := cmd.Output()
 		if err == nil {
-			shipRepository(tmpDir)
+			shipRepository(resp, tmpDir)
 		} else {
 			fmt.Println("Something went wrong while trying to clone", resp.Repository.CloneUrl, "into", tmpDir)
 			fmt.Println(string(outBs))
