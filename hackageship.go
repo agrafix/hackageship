@@ -51,7 +51,7 @@ func init() {
 
 func uploadFile(uri string, paramName, path string) error {
 	userAuth := *hackageUser + ":" + *hackagePass
-	return RunCmd("curl", "-i", "-u "+userAuth, "-F "+paramName+"=@"+path, uri)
+	return RunCmd("/bin/bash", "-c", "curl -L -i -u "+userAuth+" -F "+paramName+"=@"+path+" "+uri)
 }
 
 func readLines(path string) ([]string, error) {
