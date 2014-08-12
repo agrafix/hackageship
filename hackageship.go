@@ -27,6 +27,8 @@ type GithubResponse struct {
 	RefType    string `json:"ref_type"`
 }
 
+var WorkQueue = make(chan *GithubResponse, 100)
+
 func CheckHMAC(message, messageMAC, key []byte) bool {
 	mac := hmac.New(sha1.New, key)
 	mac.Write(message)
@@ -85,6 +87,15 @@ func shipRepository(dirname string) bool {
 	return false
 }
 
+func StartWorker() {
+	go func() {
+		for {
+			resp := <-WorkQueue
+			handleRelease(resp)
+		}
+	}()
+}
+
 func handleRelease(resp *GithubResponse) {
 	if resp.RefType == "tag" {
 		fmt.Println("new tag detected:", resp.Ref)
@@ -92,9 +103,8 @@ func handleRelease(resp *GithubResponse) {
 		cmd := exec.Command("git", "clone", resp.Repository.CloneUrl, tmpDir)
 		outBs, err := cmd.Output()
 		if err == nil {
-			if !shipRepository(tmpDir) {
-				fmt.Println("Something bad happened :-(")
-			}
+			shipRepository(tmpDir)
+			fmt.Println("Work enqueued")
 		} else {
 			fmt.Println("Something went wrong while trying to clone", resp.Repository.CloneUrl, "into", tmpDir)
 			fmt.Println(string(outBs))
@@ -106,6 +116,7 @@ func handleRelease(resp *GithubResponse) {
 }
 
 func main() {
+	StartWorker()
 	m := martini.Classic()
 	m.Post("/hook/:user/:repo", func(res http.ResponseWriter, req *http.Request, params martini.Params) string {
 		user := params["user"]
@@ -127,7 +138,7 @@ func main() {
 					var data GithubResponse
 					err = json.Unmarshal(b, &data)
 					if err == nil {
-						handleRelease(&data)
+						WorkQueue <- &data
 						res.WriteHeader(200)
 						return "OK"
 					} else {
