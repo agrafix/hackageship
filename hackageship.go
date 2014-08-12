@@ -100,6 +100,19 @@ func readLines(path string) ([]string, error) {
 	return lines, scanner.Err()
 }
 
+func RunCmd(name string, arg ...string) error {
+	logOutput := "$ " + name + " "
+	for _, argV := range arg {
+		logOutput += argV
+	}
+	fmt.Println(logOutput)
+
+	x := exec.Command(name, arg...)
+	x.Stdout = os.Stdout
+	x.Stderr = os.Stderr
+	return x.Run()
+}
+
 func cabalMeta(cabalFile string) (string, string) {
 	lines, err := readLines(cabalFile)
 	pkgVers := "-error-"
@@ -134,20 +147,14 @@ func cabalDist(resp *GithubResponse, dirname string, cabalFile string) bool {
 	os.Chdir(dirname)
 
 	// checkout the correct tag
-	checkoutCmd := exec.Command("git", "checkout", "tags/"+resp.Ref)
-	checkoutCmd.Stdout = os.Stdout
-	checkoutCmd.Stderr = os.Stderr
-	if err := checkoutCmd.Run(); err != nil {
+	if err := RunCmd("git", "checkout", "tags/"+resp.Ref); err != nil {
 		fmt.Println("Failed to checkout the provided tag!")
 		os.Chdir(currDir)
 		return false
 	}
 
 	// package the cabal dist package
-	cmd := exec.Command("cabal", "sdist")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	err := cmd.Run()
+	err := RunCmd("cabal", "sdist")
 	os.Chdir(currDir)
 	if err == nil {
 		fileLocation := filepath.Join(dirname, "dist", cabalName+"-"+cabalVers+".tar.gz")
@@ -219,13 +226,11 @@ func handleRelease(resp *GithubResponse) {
 		currDir, _ := os.Getwd()
 		tmpDir := filepath.Join(currDir, "hstmp_"+uniuri.NewLen(10))
 		os.Mkdir(tmpDir, os.ModePerm)
-		cmd := exec.Command("git", "clone", resp.Repository.CloneUrl, tmpDir)
-		outBs, err := cmd.Output()
+		err := RunCmd("git", "clone", resp.Repository.CloneUrl, tmpDir)
 		if err == nil {
 			shipRepository(resp, tmpDir)
 		} else {
 			fmt.Println("Something went wrong while trying to clone", resp.Repository.CloneUrl, "into", tmpDir)
-			fmt.Println(string(outBs))
 			fmt.Println(err)
 		}
 		rmErr := os.RemoveAll(tmpDir)
