@@ -1,0 +1,6 @@
+#!/bin/bash
+echo "Running hackageship for hackage user $HACKAGE_USER"
+echo "Persisting data to $DATA_DIR"
+echo "Port will be $PORT"
+
+docker run -p $PORT:3000 -v $DATA_DIR:/data/state -d -e HACKAGE_USER="$HACKAGE_USER" -e HACKAGE_PASSWORD="$HACKAGE_PASSWORD" agrafix/hackageship
