@@ -73,7 +73,9 @@ func shipRepository(dirname string) bool {
 		currDir, _ := os.Getwd()
 		os.Chdir(dirname)
 		cmd := exec.Command("cabal", "sdist")
-		outBs, err := cmd.Output()
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		err := cmd.Run()
 		os.Chdir(currDir)
 		if err == nil {
 			fmt.Println("Generated .tar.gz for hackage!")
@@ -81,7 +83,6 @@ func shipRepository(dirname string) bool {
 			return true
 		} else {
 			fmt.Println("Failed to run cabal sdist")
-			fmt.Println(string(outBs))
 			fmt.Println(err)
 			return false
 		}
