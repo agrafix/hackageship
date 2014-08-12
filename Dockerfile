@@ -9,16 +9,22 @@ ENV PATH /root/go/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin
 RUN mkdir -p $GOPATH
 
 RUN apt-get update
-RUN apt-get install -y build-essential mercurial git subversion wget curl cabal-install
+RUN apt-get install -y build-essential mercurial git subversion wget curl cabal-install zlib1g-dev
+
+# prepare cabal
+RUN cabal update && cabal install cabal-install
 
 # go 1.3 tarball
 RUN wget -qO- http://golang.org/dl/go1.3.linux-amd64.tar.gz | tar -C /usr/local -xzf -
 
+# project dependencies
 RUN go get github.com/go-martini/martini
 RUN go get github.com/dchest/uniuri
 
+# build the project
 RUN mkdir -p $GOPATH/src/github.com/agrafix/hackageship
 ADD . $GOPATH/src/github.com/agrafix/hackageship
 RUN go build $GOPATH/src/github.com/agrafix/hackageship/hackageship.go
 
+# run
 CMD ./hackageship -secret="$GITHUB_SECRET" -hackage-user="$HACKAGE_USER" -hackage-password="$HACKAGE_PASSWORD"

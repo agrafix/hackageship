@@ -115,13 +115,15 @@ func cabalMeta(cabalFile string) (string, string) {
 				pkgName = matches[1]
 			}
 		}
+	} else {
+		fmt.Println("Failed to read", cabalFile, "Error was:", err)
 	}
 	return pkgName, pkgVers
 }
 
 func cabalDist(resp *GithubResponse, dirname string, cabalFile string) bool {
 	fmt.Println(".cabal file found:", cabalFile)
-	cabalName, cabalVers := cabalMeta(cabalFile)
+	cabalName, cabalVers := cabalMeta(filepath.Join(dirname, cabalFile))
 	fmt.Println("Package name is", cabalName)
 	if cabalVers != resp.Ref {
 		fmt.Println("Your cabalfile says your package is version", cabalVers, "but your git tag specifies version", resp.Ref)
@@ -137,8 +139,40 @@ func cabalDist(resp *GithubResponse, dirname string, cabalFile string) bool {
 	checkoutCmd.Stderr = os.Stderr
 	if err := checkoutCmd.Run(); err != nil {
 		fmt.Println("Failed to checkout the provided tag!")
+		os.Chdir(currDir)
 		return false
 	}
+
+	// create a sandbox
+	/*
+		cmdS := exec.Command("cabal", "sandbox", "init")
+		cmdS.Stdout = os.Stdout
+		cmdS.Stderr = os.Stderr
+		if errSandbox := cmdS.Run(); errSandbox != nil {
+			fmt.Println("Failed to create cabal sandbox")
+			os.Chdir(currDir)
+			return false
+		}
+
+		// install dependencies
+		cmdD := exec.Command("cabal", "install", "-j", "--only-dependencies")
+		cmdD.Stdout = os.Stdout
+		cmdD.Stderr = os.Stderr
+		if err := cmdS.Run(); err != nil {
+			fmt.Println("Failed to create cabal sandbox")
+			os.Chdir(currDir)
+			return false
+		}
+
+		// run cabal configure
+		cmdC := exec.Command("cabal", "configure")
+		cmdC.Stdout = os.Stdout
+		cmdC.Stderr = os.Stderr
+		if err := cmdS.Run(); err != nil {
+			fmt.Println("Failed to run cabal configure")
+			os.Chdir(currDir)
+			return false
+		}*/
 
 	// package the cabal dist package
 	cmd := exec.Command("cabal", "sdist")
@@ -147,7 +181,7 @@ func cabalDist(resp *GithubResponse, dirname string, cabalFile string) bool {
 	err := cmd.Run()
 	os.Chdir(currDir)
 	if err == nil {
-		fileLocation := filepath.Join(dirname, cabalName+"-"+cabalVers+".tar.gz")
+		fileLocation := filepath.Join(dirname, "dist", cabalName+"-"+cabalVers+".tar.gz")
 		if _, err := os.Stat(fileLocation); err == nil {
 			fmt.Println("Generated", fileLocation, "for hackage, uploading...")
 			hackageUrl := "http://" + *hackageUser + ":" + *hackagePass + "@hackage.haskell.org/packages/"
