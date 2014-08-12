@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/hex"
@@ -11,9 +10,7 @@ import (
 	"fmt"
 	"github.com/dchest/uniuri"
 	"github.com/go-martini/martini"
-	"io"
 	"io/ioutil"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"os/exec"
@@ -52,48 +49,9 @@ func init() {
 	flag.Parse()
 }
 
-func uploadFile(uri string, paramName, path string) (int, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return 0, err
-	}
-	defer file.Close()
-
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile(paramName, filepath.Base(path))
-	if err != nil {
-		return 0, err
-	}
-	_, err = io.Copy(part, file)
-	err = writer.Close()
-	if err != nil {
-		return 0, err
-	}
-
-	req, reqError := http.NewRequest("POST", uri, body)
-	if reqError != nil {
-		return 0, reqError
-	}
-
-	client := &http.Client{}
-	req.SetBasicAuth(*hackageUser, *hackagePass)
-	fmt.Println(req.Header)
-	resp, respError := client.Do(req)
-	if respError != nil {
-		return 0, respError
-	}
-
-	respBody := &bytes.Buffer{}
-	_, respBodyError := body.ReadFrom(resp.Body)
-	if respBodyError != nil {
-		return 0, respBodyError
-	}
-	resp.Body.Close()
-	fmt.Println(resp.StatusCode)
-	fmt.Println(resp.Header)
-	fmt.Println(respBody)
-	return resp.StatusCode, nil
+func uploadFile(uri string, paramName, path string) error {
+	userAuth := *hackageUser + ":" + *hackagePass
+	return RunCmd("curl", "-i", "-u "+userAuth, "-F "+paramName+"=@"+path, uri)
 }
 
 func readLines(path string) ([]string, error) {
@@ -173,12 +131,12 @@ func cabalDist(resp *GithubResponse, dirname string, cabalFile string) bool {
 		if _, err := os.Stat(fileLocation); err == nil {
 			fmt.Println("Generated", fileLocation, "for hackage, uploading...")
 			hackageUrl := "https://hackage.haskell.org/packages/"
-			statusCode, err := uploadFile(hackageUrl, "package", fileLocation)
-			if err == nil && statusCode == 200 {
+			err := uploadFile(hackageUrl, "package", fileLocation)
+			if err == nil {
 				fmt.Println("All good!")
 				return true
 			}
-			fmt.Println("Upload to", hackageUrl, "failed! Status", statusCode, "Error:", err)
+			fmt.Println("Upload to", hackageUrl, "failed! Error:", err)
 		} else {
 			fmt.Println("Failed to generated package:", fileLocation)
 		}
