@@ -52,10 +52,10 @@ func init() {
 	flag.Parse()
 }
 
-func uploadFile(uri string, paramName, path string) (*int, error) {
+func uploadFile(uri string, paramName, path string) (int, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 	defer file.Close()
 
@@ -63,26 +63,26 @@ func uploadFile(uri string, paramName, path string) (*int, error) {
 	writer := multipart.NewWriter(body)
 	part, err := writer.CreateFormFile(paramName, filepath.Base(path))
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 	_, err = io.Copy(part, file)
 	err = writer.Close()
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 
 	req, reqError := http.NewRequest("POST", uri, body)
 	if reqError != nil {
-		return nil, reqError
+		return 0, reqError
 	}
 
 	client := &http.Client{}
 	resp, respError := client.Do(req)
 	if respError != nil {
-		return nil, respError
+		return 0, respError
 	}
 	resp.Body.Close()
-	return &resp.StatusCode, nil
+	return resp.StatusCode, nil
 }
 
 func readLines(path string) ([]string, error) {
@@ -143,37 +143,6 @@ func cabalDist(resp *GithubResponse, dirname string, cabalFile string) bool {
 		return false
 	}
 
-	// create a sandbox
-	/*
-		cmdS := exec.Command("cabal", "sandbox", "init")
-		cmdS.Stdout = os.Stdout
-		cmdS.Stderr = os.Stderr
-		if errSandbox := cmdS.Run(); errSandbox != nil {
-			fmt.Println("Failed to create cabal sandbox")
-			os.Chdir(currDir)
-			return false
-		}
-
-		// install dependencies
-		cmdD := exec.Command("cabal", "install", "-j", "--only-dependencies")
-		cmdD.Stdout = os.Stdout
-		cmdD.Stderr = os.Stderr
-		if err := cmdS.Run(); err != nil {
-			fmt.Println("Failed to create cabal sandbox")
-			os.Chdir(currDir)
-			return false
-		}
-
-		// run cabal configure
-		cmdC := exec.Command("cabal", "configure")
-		cmdC.Stdout = os.Stdout
-		cmdC.Stderr = os.Stderr
-		if err := cmdS.Run(); err != nil {
-			fmt.Println("Failed to run cabal configure")
-			os.Chdir(currDir)
-			return false
-		}*/
-
 	// package the cabal dist package
 	cmd := exec.Command("cabal", "sdist")
 	cmd.Stdout = os.Stdout
@@ -186,7 +155,7 @@ func cabalDist(resp *GithubResponse, dirname string, cabalFile string) bool {
 			fmt.Println("Generated", fileLocation, "for hackage, uploading...")
 			hackageUrl := "http://" + *hackageUser + ":" + *hackagePass + "@hackage.haskell.org/packages/"
 			statusCode, err := uploadFile(hackageUrl, "package", fileLocation)
-			if err == nil && *statusCode == 200 {
+			if err == nil && statusCode == 200 {
 				fmt.Println("All good!")
 				return true
 			}
@@ -288,7 +257,7 @@ func main() {
 			sigBytes, sigError := hex.DecodeString(signature)
 			bv := []byte(*cfgSecret)
 
-			if sigError == nil && (CheckHMAC(b, sigBytes, bv) || true) {
+			if sigError == nil && CheckHMAC(b, sigBytes, bv) {
 				if eventType == "create" {
 					fmt.Println("Recieved a create event")
 					var data GithubResponse
