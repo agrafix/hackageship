@@ -172,7 +172,7 @@ func cabalDist(resp *GithubResponse, dirname string, cabalFile string) bool {
 		fileLocation := filepath.Join(dirname, "dist", cabalName+"-"+cabalVers+".tar.gz")
 		if _, err := os.Stat(fileLocation); err == nil {
 			fmt.Println("Generated", fileLocation, "for hackage, uploading...")
-			hackageUrl := "http://hackage.haskell.org/packages/upload"
+			hackageUrl := "https://hackage.haskell.org/packages/"
 			statusCode, err := uploadFile(hackageUrl, "package", fileLocation)
 			if err == nil && statusCode == 200 {
 				fmt.Println("All good!")
