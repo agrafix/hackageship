@@ -2,14 +2,18 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/dchest/uniuri"
 	"github.com/go-martini/martini"
+	"io"
 	"io/ioutil"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"os/exec"
@@ -41,9 +45,44 @@ func CheckHMAC(message, messageMAC, key []byte) bool {
 }
 
 var cfgSecret = flag.String("secret", "", "Github Webhook Secret")
+var hackageUser = flag.String("hackage-user", "", "Hackage username")
+var hackagePass = flag.String("hackage-password", "", "Hackage password")
 
 func init() {
 	flag.Parse()
+}
+
+func uploadFile(uri string, paramName, path string) (*int, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile(paramName, filepath.Base(path))
+	if err != nil {
+		return nil, err
+	}
+	_, err = io.Copy(part, file)
+	err = writer.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	req, reqError := http.NewRequest("POST", uri, body)
+	if reqError != nil {
+		return nil, reqError
+	}
+
+	client := &http.Client{}
+	resp, respError := client.Do(req)
+	if respError != nil {
+		return nil, respError
+	}
+	resp.Body.Close()
+	return &resp.StatusCode, nil
 }
 
 func readLines(path string) ([]string, error) {
@@ -110,9 +149,14 @@ func cabalDist(resp *GithubResponse, dirname string, cabalFile string) bool {
 	if err == nil {
 		fileLocation := filepath.Join(dirname, cabalName+"-"+cabalVers+".tar.gz")
 		if _, err := os.Stat(fileLocation); err == nil {
-			fmt.Println("Generated", fileLocation, "for hackage!")
-			fmt.Println("TODO: Upload")
-			return true
+			fmt.Println("Generated", fileLocation, "for hackage, uploading...")
+			hackageUrl := "http://" + *hackageUser + ":" + *hackagePass + "@hackage.haskell.org/packages/"
+			statusCode, err := uploadFile(hackageUrl, "package", fileLocation)
+			if err == nil && *statusCode == 200 {
+				fmt.Println("All good!")
+				return true
+			}
+			fmt.Println("Upload failed! Status", statusCode, "Error:", err)
 		} else {
 			fmt.Println("Failed to generated package:", fileLocation)
 		}
@@ -169,7 +213,9 @@ func StartWorker() {
 func handleRelease(resp *GithubResponse) {
 	if resp.RefType == "tag" {
 		fmt.Println("new tag detected:", resp.Ref)
-		tmpDir, _ := ioutil.TempDir("", "hackageshipdir")
+		currDir, _ := os.Getwd()
+		tmpDir := filepath.Join(currDir, "hstmp_"+uniuri.NewLen(10))
+		os.Mkdir(tmpDir, os.ModePerm)
 		cmd := exec.Command("git", "clone", resp.Repository.CloneUrl, tmpDir)
 		outBs, err := cmd.Output()
 		if err == nil {
@@ -179,13 +225,20 @@ func handleRelease(resp *GithubResponse) {
 			fmt.Println(string(outBs))
 			fmt.Println(err)
 		}
-
-		os.Remove(tmpDir)
+		rmErr := os.RemoveAll(tmpDir)
+		if rmErr != nil {
+			fmt.Println("Failed to remove", tmpDir, "Error:", rmErr)
+		}
 	}
 }
 
 func main() {
 	StartWorker()
+	if *cfgSecret == "" || *hackageUser == "" || *hackagePass == "" {
+		fmt.Println("Please provide a secret, a hackage user and hackage password!")
+		return
+	}
+
 	m := martini.Classic()
 	m.Post("/hook/:user/:repo", func(res http.ResponseWriter, req *http.Request, params martini.Params) string {
 		user := params["user"]
