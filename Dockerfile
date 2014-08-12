@@ -20,11 +20,16 @@ RUN wget -qO- http://golang.org/dl/go1.3.linux-amd64.tar.gz | tar -C /usr/local 
 # project dependencies
 RUN go get github.com/go-martini/martini
 RUN go get github.com/dchest/uniuri
+RUN go get github.com/mattn/go-sqlite3
+RUN go get github.com/jinzhu/gorm
 
 # build the project
 RUN mkdir -p $GOPATH/src/github.com/agrafix/hackageship
 ADD . $GOPATH/src/github.com/agrafix/hackageship
 RUN go build $GOPATH/src/github.com/agrafix/hackageship/hackageship.go
 
+# volume
+VOLUME /data/state
+
 # run
-CMD ./hackageship -secret="$GITHUB_SECRET" -hackage-user="$HACKAGE_USER" -hackage-password="$HACKAGE_PASSWORD"
+CMD ./hackageship -hackage-user="$HACKAGE_USER" -hackage-password="$HACKAGE_PASSWORD" -state-dir="/data/state"

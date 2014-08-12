@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"github.com/dchest/uniuri"
 	"github.com/go-martini/martini"
+	"github.com/jinzhu/gorm"
+	_ "github.com/mattn/go-sqlite3"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -17,6 +19,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 type Repository struct {
@@ -30,6 +33,41 @@ type GithubResponse struct {
 	RefType    string `json:"ref_type"`
 }
 
+type GithubRepo struct {
+	Id            int64
+	GithubUser    string
+	GithubProject string
+	HookSecret    string
+	Activated     bool
+}
+
+type PublishHistory struct {
+	Id          int64
+	CreatedAt   time.Time
+	Repository  string
+	Version     string
+	PackageName string
+	Message     string
+	PublishOkay bool
+}
+
+type finishShippingCallback func(pkgName string, pkgVers string, ok bool, logMsg ...interface{})
+
+func FinishShipping(db *gorm.DB, resp *GithubResponse, pkgName string, pkgVers string, ok bool, logMsg ...interface{}) {
+	message := fmt.Sprint(logMsg...)
+	fmt.Printf(message)
+
+	hist := PublishHistory{
+		Repository:  resp.Repository.Name,
+		Version:     pkgVers,
+		PackageName: pkgName,
+		Message:     message,
+		PublishOkay: ok,
+	}
+
+	db.Create(&hist)
+}
+
 var WorkQueue = make(chan *GithubResponse, 100)
 var CabalVersionRegex = regexp.MustCompile(`version:\s+([0-9.]+)`)
 var CabalNameRegex = regexp.MustCompile(`name:\s+([^\s]+)`)
@@ -41,9 +79,9 @@ func CheckHMAC(message, messageMAC, key []byte) bool {
 	return hmac.Equal(messageMAC, expectedMAC)
 }
 
-var cfgSecret = flag.String("secret", "", "Github Webhook Secret")
 var hackageUser = flag.String("hackage-user", "", "Hackage username")
 var hackagePass = flag.String("hackage-password", "", "Hackage password")
+var stateDir = flag.String("state-dir", "~/.hackageship", "State directory")
 
 func init() {
 	flag.Parse()
@@ -104,12 +142,16 @@ func cabalMeta(cabalFile string) (string, string) {
 	return pkgName, pkgVers
 }
 
-func cabalDist(resp *GithubResponse, dirname string, cabalFile string) bool {
+func cabalDist(resp *GithubResponse, dirname string, cabalFile string, cb finishShippingCallback) bool {
 	fmt.Println(".cabal file found:", cabalFile)
 	cabalName, cabalVers := cabalMeta(filepath.Join(dirname, cabalFile))
+	qCb := func(ok bool, logMsg ...interface{}) {
+		cb(cabalName, cabalVers, ok, logMsg...)
+	}
+
 	fmt.Println("Package name is", cabalName)
 	if cabalVers != resp.Ref {
-		fmt.Println("Your cabalfile says your package is version", cabalVers, "but your git tag specifies version", resp.Ref)
+		qCb(false, "Your cabalfile says your package is version", cabalVers, "but your git tag specifies version", resp.Ref)
 		return false
 	}
 
@@ -118,7 +160,7 @@ func cabalDist(resp *GithubResponse, dirname string, cabalFile string) bool {
 
 	// checkout the correct tag
 	if err := RunCmd("git", "checkout", "tags/"+resp.Ref); err != nil {
-		fmt.Println("Failed to checkout the provided tag!")
+		qCb(false, "Failed to checkout the provided tag!")
 		os.Chdir(currDir)
 		return false
 	}
@@ -133,31 +175,31 @@ func cabalDist(resp *GithubResponse, dirname string, cabalFile string) bool {
 			hackageUrl := "https://hackage.haskell.org/packages/"
 			err := uploadFile(hackageUrl, "package", fileLocation)
 			if err == nil {
-				fmt.Println("All good!")
+				qCb(true, "All good!")
 				return true
 			}
-			fmt.Println("Upload to", hackageUrl, "failed! Error:", err)
+			qCb(false, "Upload to", hackageUrl, "failed! Error:", err)
 		} else {
-			fmt.Println("Failed to generated package:", fileLocation)
+			qCb(false, "Failed to generated package:", fileLocation)
 		}
 	} else {
-		fmt.Println("Failed to run cabal sdist")
+		qCb(false, "Failed to run cabal sdist")
 	}
 
 	return false
 }
 
-func shipRepository(resp *GithubResponse, dirname string) bool {
+func shipRepository(resp *GithubResponse, dirname string, cb finishShippingCallback) bool {
 	d, err := os.Open(dirname)
 	if err != nil {
-		fmt.Println(err)
+		cb("?", "?", false, err)
 		return false
 	}
 	defer d.Close()
 
 	files, err := d.Readdir(-1)
 	if err != nil {
-		fmt.Println(err)
+		cb("?", "?", false, err)
 		return false
 	}
 
@@ -174,23 +216,23 @@ func shipRepository(resp *GithubResponse, dirname string) bool {
 	}
 
 	if cabalFile != "" {
-		return cabalDist(resp, dirname, cabalFile)
+		return cabalDist(resp, dirname, cabalFile, cb)
 	}
 
-	fmt.Println("Cabal file not found")
+	cb("?", "?", false, "Cabal file not found")
 	return false
 }
 
-func StartWorker() {
+func StartWorker(db *gorm.DB) {
 	go func() {
 		for {
 			resp := <-WorkQueue
-			handleRelease(resp)
+			handleRelease(db, resp)
 		}
 	}()
 }
 
-func handleRelease(resp *GithubResponse) {
+func handleRelease(db *gorm.DB, resp *GithubResponse) {
 	if resp.RefType == "tag" {
 		fmt.Println("new tag detected:", resp.Ref)
 		currDir, _ := os.Getwd()
@@ -198,10 +240,11 @@ func handleRelease(resp *GithubResponse) {
 		os.Mkdir(tmpDir, os.ModePerm)
 		err := RunCmd("git", "clone", resp.Repository.CloneUrl, tmpDir)
 		if err == nil {
-			shipRepository(resp, tmpDir)
+			shipRepository(resp, tmpDir, func(pkgName string, pkgVers string, ok bool, logMsg ...interface{}) {
+				FinishShipping(db, resp, pkgName, pkgVers, ok, logMsg...)
+			})
 		} else {
-			fmt.Println("Something went wrong while trying to clone", resp.Repository.CloneUrl, "into", tmpDir)
-			fmt.Println(err)
+			FinishShipping(db, resp, "?", "?", false, "Something went wrong while trying to clone", resp.Repository.CloneUrl, "into", tmpDir, err)
 		}
 		rmErr := os.RemoveAll(tmpDir)
 		if rmErr != nil {
@@ -211,13 +254,50 @@ func handleRelease(resp *GithubResponse) {
 }
 
 func main() {
-	StartWorker()
-	if *cfgSecret == "" || *hackageUser == "" || *hackagePass == "" {
-		fmt.Println("Please provide a secret, a hackage user and hackage password!")
+	if *hackageUser == "" || *hackagePass == "" {
+		fmt.Println("Please provide a hackage user and hackage password!")
 		return
 	}
 
+	if _, err := os.Stat(*stateDir); os.IsNotExist(err) {
+		fmt.Println("The state dir ", *stateDir, "doesn't exist. Please create it.")
+		return
+	}
+
+	db, err := gorm.Open("sqlite3", filepath.Join(*stateDir, "ship.db"))
+	if err != nil {
+		fmt.Println("Failed to connect to database!", err)
+		return
+	}
+
+	db.DB()
+	db.DB().Ping()
+	db.DB().SetMaxIdleConns(10)
+	db.DB().SetMaxOpenConns(100)
+	db.SingularTable(true)
+	db.AutoMigrate(PublishHistory{})
+	db.AutoMigrate(GithubRepo{})
+	defer db.Close()
+
+	StartWorker(&db)
+
 	m := martini.Classic()
+	m.Get("/projects", func(res http.ResponseWriter, req *http.Request) []byte {
+		var projects []GithubRepo
+		db.Find(&projects)
+		res.Header().Set("Content-Type", "application/json")
+		outBytes, _ := json.Marshal(projects)
+		return outBytes
+	})
+
+	m.Get("/history", func(res http.ResponseWriter, req *http.Request) []byte {
+		var history []PublishHistory
+		db.Find(&history)
+		res.Header().Set("Content-Type", "application/json")
+		outBytes, _ := json.Marshal(history)
+		return outBytes
+	})
+
 	m.Post("/hook/:user/:repo", func(res http.ResponseWriter, req *http.Request, params martini.Params) string {
 		user := params["user"]
 		repo := params["repo"]
@@ -228,9 +308,20 @@ func main() {
 		fmt.Println("Hook called for", user, "/", repo, "Event:", eventType, "-", eventDelivery)
 		fmt.Println("Signature:", signature)
 
+		var shipRepo GithubRepo
+		if db.Where("githubUser = ? AND githubProject = ?", user, repo).RecordNotFound() {
+			res.WriteHeader(500)
+			return "Project unknown to hackageship!"
+		}
+
+		if !shipRepo.Activated {
+			res.WriteHeader(403)
+			return "Project not yet actived"
+		}
+
 		if b, err := ioutil.ReadAll(req.Body); err == nil {
 			sigBytes, sigError := hex.DecodeString(signature)
-			bv := []byte(*cfgSecret)
+			bv := []byte(shipRepo.HookSecret)
 
 			if sigError == nil && CheckHMAC(b, sigBytes, bv) {
 				if eventType == "create" {
