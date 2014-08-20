@@ -410,7 +410,7 @@ func main() {
 		fmt.Println("Signature:", signature)
 
 		var shipRepo GithubRepo
-		if db.Where("githubUser = ? AND githubProject = ?", user, repo).RecordNotFound() {
+		if db.Where("github_user = ? AND github_project = ?", user, repo).Find(&shipRepo).RecordNotFound() {
 			res.WriteHeader(500)
 			return "Project unknown to hackageship!"
 		}
