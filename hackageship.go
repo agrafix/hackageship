@@ -33,6 +33,7 @@ type GithubResponse struct {
 	Repository Repository
 	Ref        string
 	RefType    string `json:"ref_type"`
+	OwnedBy    int64  `json:"-"`
 }
 
 type GithubRepo struct {
@@ -68,6 +69,7 @@ func FinishShipping(db *gorm.DB, resp *GithubResponse, pkgName string, pkgVers s
 	fmt.Printf(message)
 
 	hist := PublishHistory{
+		ProjectId:   resp.OwnedBy,
 		Repository:  resp.Repository.Name,
 		Version:     pkgVers,
 		PackageName: pkgName,
@@ -430,6 +432,7 @@ func main() {
 					var data GithubResponse
 					err = json.Unmarshal(b, &data)
 					if err == nil {
+						data.OwnedBy = shipRepo.Id
 						WorkQueue <- &data
 						res.WriteHeader(200)
 						return "OK"
