@@ -299,8 +299,10 @@ func main() {
 	}
 
 	m.Use(render.Renderer(render.Options{
-		Directory: "templates",
-		Layout:    "layout"}))
+		Directory:  "templates",
+		Layout:     "layout",
+		Extensions: []string{".tmpl", ".html"},
+	}))
 
 	m.Get("/", func(r render.Render) {
 		var projects []GithubRepo
