@@ -1,0 +1,24 @@
+<html>
+<head>
+	<title>Hackage Ship - {{.metatitle}}</title>
+	<link rel="stylesheet" type="text/css" href="/css/bootstrap.min.css" />
+	<link rel="stylesheet" type="text/css" href="/css/bootstrap-theme.min.css" />
+</head>
+<body>
+	<div class=".container">
+		<div class="row">
+		  <div class="col-md-4"></div>
+		  <div class="col-md-4">
+		  	<a href="/"><h1>Hackage Ship</h1></a>
+		  	<h2>{{.metatitle}}</h2>
+		  	<div>
+		  		{{yield}}
+		  	</div>
+		  </div>
+		  <div class="col-md-4"></div>
+		</div>	
+	</div>
+	<script type="text/javascript" src="/js/jquery-1.11.1.min.js"></script>
+	<script type="text/javascript" src="/js/bootstap.min.js"></script>
+</body>
+</html>

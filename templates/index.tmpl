@@ -1,0 +1,56 @@
+<p>
+Ship your <a href="http://www.haskell.org/haskellwiki/Haskell">Haskell</a> <a href="http://www.haskell.org/cabal/">Cabal</a> packages to <a href="http://hackage.haskell.org/">Hackage</a> without the hassle! Contribute or run your own Hackage Ship, the code is on <a href="https://github.com/agrafix/hackageship">GitHub</a>.
+</p>
+
+<h3>How</h3>
+
+<h4>Preparation</h4>
+
+<ol>
+	<li>Write a haskell library and a cabal file for it</li>
+	<li>Make sure your code is on <a href="https://www.github.com">GitHub</a></li>
+	<li>Add your github repository <a href="/add">here</a></li>
+	<li>Add the Hackage-User <i>{{.hackageuser}}</i> to the Maintainers-Group of your package on hackage</li>
+</ol>
+
+<h4>Ship a new version</h4>
+
+<p>First, make sure you've updated your cabal file and inserted the correct version. Then:</p>
+<pre>
+$ cd your_project/
+$ git tag -a [YOUR_VERSION] -m 'hackage [YOUR_VERSION]'
+$ git push
+</pre>
+
+<h3>Latest ships</h3>
+<table class="table table-hover">
+<tr>
+	<th>#</th>
+	<th>Date</th>
+	<th>Repository</th>
+	<th>Package</th>
+	<th>Version</th>
+	<th>Status</th>
+</tr>
+{{ range .ships }}
+	{{ template "history-entry" . }}
+{{ end }}
+</table>
+
+<h3>Projects using Hackage Ship</h3>
+<table class="table table-hover">
+<tr>
+	<th>#</th>
+	<th>Project</th>
+	<th>Ship-History</th>
+	<th>Github</th>
+</tr>
+{{ range .projects }}
+<tr>
+	<th>{{.Id}}</th>
+	<td>{{.GithubUser}}/{{.GithubProject}}</td>
+	<td><a href="/history/{{.GithubUser}}/{{.GithubProject}}">history</a></td>
+	<td><a href="https://github.com/{{.GithubUser}}/{{.GithubProject}}">GitHub</a></td>
+</tr>
+{{ end }}
+</table>

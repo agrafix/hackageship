@@ -19,6 +19,8 @@ RUN wget -qO- http://golang.org/dl/go1.3.linux-amd64.tar.gz | tar -C /usr/local 
 
 # project dependencies
 RUN go get github.com/go-martini/martini
+RUN go get github.com/martini-contrib/binding
+RUN go get github.com/martini-contrib/render
 RUN go get github.com/dchest/uniuri
 RUN go get github.com/mattn/go-sqlite3
 RUN go get github.com/jinzhu/gorm

@@ -1,0 +1,7 @@
+<tr>
+	<th>{{.Id}}</th>
+	<td>{{.CreatedAt}}</td>
+	<td><a href="http://hackage.haskell.org/package/{{.PackageName}}">{{.PackageName}}</a></td>
+	<td>{{.Version}}</td>
+	<td>{{if .PublishOkay}}ok{{else}}error{{end}}</td>
+</tr>

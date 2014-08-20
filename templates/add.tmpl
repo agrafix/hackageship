@@ -1,0 +1,37 @@
+<p>
+To add a new project to <i>hackage ship</i>, please provide your github username and the github project.
+</p>
+
+{{if .isError}}
+<div class="alert alert-danger" role="alert">
+	{{.errorMsg}}
+</div>
+{{end}}
+
+<form method="post" class="form-horizontal" action="/add" role="form">
+<div class="container-fluid">
+	<div class="row">
+		<div class="col-md-6">	
+		   <div class="form-group">
+    			<label class="sr-only" for="github-user">Email address</label>
+    			<input type="text" class="form-control" id="github-user" name="github-user" placeholder="username" value={{.githubUsername}}>
+  			</div>
+  		</div>
+  		<div class="col-md-6">
+		  <div class="form-group">
+    		<div class="input-group">
+      			<div class="input-group-addon">/</div>
+      			<input class="form-control" type="text" name="github-project" placeholder="project" value={{.githubProject}}>
+    		</div>
+    	  </div>
+    	</div>
+    </div>
+
+    <div class="form-group">
+    	<label for="github-secret">Webhook Secret</label>
+    	<input type="text" class="form-control" id="github-secret" name="github-secret" placeholder="Webhook secret">
+    </div>
+</div>
+
+  <button type="submit" class="btn btn-default">add</button>
+</form>

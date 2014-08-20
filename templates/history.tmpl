@@ -1,0 +1,19 @@
+<h3>History</h3>
+<table class="table table-hover">
+<tr>
+	<th>#</th>
+	<th>Date</th>
+	<th>Repository</th>
+	<th>Package</th>
+	<th>Version</th>
+	<th>Status</th>
+</tr>
+{{ range .HistoryEntries }}
+{{ template "history-entry" . }}
+<tr>
+	<td colspan="5">
+		<pre>{{.Message}}</pre>
+	</td>
+</tr>
+{{ end }}
+</table>

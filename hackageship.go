@@ -11,6 +11,8 @@ import (
 	"github.com/dchest/uniuri"
 	"github.com/go-martini/martini"
 	"github.com/jinzhu/gorm"
+	"github.com/martini-contrib/binding"
+	"github.com/martini-contrib/render"
 	_ "github.com/mattn/go-sqlite3"
 	"io/ioutil"
 	"net/http"
@@ -34,21 +36,29 @@ type GithubResponse struct {
 }
 
 type GithubRepo struct {
-	Id            int64
-	GithubUser    string
-	GithubProject string
-	HookSecret    string
-	Activated     bool
+	Id             int64
+	GithubUser     string
+	GithubProject  string
+	HookSecret     string
+	Activated      bool
+	HistoryEntries []PublishHistory
 }
 
 type PublishHistory struct {
 	Id          int64
+	ProjectId   int64
 	CreatedAt   time.Time
 	Repository  string
 	Version     string
 	PackageName string
 	Message     string
 	PublishOkay bool
+}
+
+type NewGithubRepo struct {
+	GithubUser    string `form:"github-user" binding:"required"`
+	GithubProject string `form:"github-project" binding:"required"`
+	GithubSecret  string `form:"github-secret" binding:"required"`
 }
 
 type finishShippingCallback func(pkgName string, pkgVers string, ok bool, logMsg ...interface{})
@@ -71,6 +81,7 @@ func FinishShipping(db *gorm.DB, resp *GithubResponse, pkgName string, pkgVers s
 var WorkQueue = make(chan *GithubResponse, 100)
 var CabalVersionRegex = regexp.MustCompile(`version:\s+([0-9.]+)`)
 var CabalNameRegex = regexp.MustCompile(`name:\s+([^\s]+)`)
+var GithubUserRegex = regexp.MustCompile(`[a-zA-Z0-9-_]+`)
 
 func CheckHMAC(message, messageMAC, key []byte) bool {
 	mac := hmac.New(sha1.New, key)
@@ -82,6 +93,7 @@ func CheckHMAC(message, messageMAC, key []byte) bool {
 var hackageUser = flag.String("hackage-user", "", "Hackage username")
 var hackagePass = flag.String("hackage-password", "", "Hackage password")
 var stateDir = flag.String("state-dir", "~/.hackageship", "State directory")
+var isDebug = flag.Bool("debug", false, "Debug mode")
 
 func init() {
 	flag.Parse()
@@ -282,6 +294,93 @@ func main() {
 	StartWorker(&db)
 
 	m := martini.Classic()
+	if !(*isDebug) {
+		martini.Env = martini.Prod
+	}
+
+	m.Use(render.Renderer(render.Options{
+		Directory: "templates",
+		Layout:    "layout"}))
+
+	m.Get("/", func(r render.Render) {
+		var projects []GithubRepo
+		db.Find(&projects)
+
+		var ships []PublishHistory
+		db.Order("id desc").Limit(10).Find(&ships)
+
+		tplMap := map[string]interface{}{
+			"metatitle":   "Home",
+			"hackageuser": hackageUser,
+			"projects":    projects,
+			"ships":       ships,
+		}
+		r.HTML(200, "index", tplMap)
+	})
+
+	m.Get("/add", func(r render.Render) {
+		tplMap := map[string]interface{}{
+			"metatitle": "Add new project",
+		}
+		r.HTML(200, "add", tplMap)
+	})
+
+	m.Post("/add", binding.Bind(NewGithubRepo{}), func(r render.Render, newRepo NewGithubRepo, req *http.Request) {
+		respondError := func(message string) {
+			tplMap := map[string]interface{}{
+				"metatitle":      "Add new project",
+				"isError":        true,
+				"errorMsg":       message,
+				"githubUsername": newRepo.GithubUser,
+				"githubProject":  newRepo.GithubProject,
+			}
+			r.HTML(200, "add", tplMap)
+		}
+		if GithubUserRegex.MatchString(newRepo.GithubUser) && GithubUserRegex.MatchString(newRepo.GithubProject) {
+			count := 0
+			db.Model(GithubRepo{}).Where("github_user = ? AND github_project = ?", newRepo.GithubUser, newRepo.GithubProject).Count(&count)
+
+			if count == 0 {
+				repo := GithubRepo{
+					GithubUser:    newRepo.GithubUser,
+					GithubProject: newRepo.GithubProject,
+					HookSecret:    newRepo.GithubSecret,
+					Activated:     true,
+				}
+
+				db.Create(&repo)
+				tplMap := map[string]interface{}{
+					"metatitle":      "New project added!",
+					"githubUsername": newRepo.GithubUser,
+					"githubProject":  newRepo.GithubProject,
+					"host":           req.Host,
+				}
+				r.HTML(200, "add-success", tplMap)
+			} else {
+				respondError("The project is already registered with us")
+			}
+		} else {
+			respondError("Invalid username/project")
+		}
+	})
+
+	m.Get("/history/:user/:project", func(r render.Render, params martini.Params) {
+		var project GithubRepo
+		if db.Model(GithubRepo{}).Where("github_user = ? AND github_project = ?", params["user"], params["project"]).Find(&project).RecordNotFound() {
+			tplMap := map[string]interface{}{
+				"metatitle": "Project not found",
+			}
+			r.HTML(404, "not-found", tplMap)
+		} else {
+			tplMap := map[string]interface{}{
+				"metatitle": "History for " + project.GithubUser + "/" + project.GithubProject,
+				"project":   project,
+			}
+			r.HTML(200, "history", tplMap)
+		}
+
+	})
+
 	m.Get("/projects", func(res http.ResponseWriter, req *http.Request) []byte {
 		var projects []GithubRepo
 		db.Find(&projects)
