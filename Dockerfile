@@ -28,7 +28,10 @@ RUN go get github.com/jinzhu/gorm
 # build the project
 RUN mkdir -p $GOPATH/src/github.com/agrafix/hackageship
 ADD . $GOPATH/src/github.com/agrafix/hackageship
-RUN go build $GOPATH/src/github.com/agrafix/hackageship/hackageship.go
+
+
+WORKDIR $GOPATH/src/github.com/agrafix/hackageship/hackageship.go
+RUN go build hackageship.go
 
 # volume
 VOLUME /data/state
