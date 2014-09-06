@@ -376,9 +376,13 @@ func main() {
 			}
 			r.HTML(404, "not-found", tplMap)
 		} else {
+			var ships []PublishHistory
+			db.Where("project_id = ?", project.Id).Order("id desc").Limit(50).Find(&ships)
+
 			tplMap := map[string]interface{}{
 				"metatitle": "History for " + project.GithubUser + "/" + project.GithubProject,
 				"project":   project,
+				"ships":     ships,
 			}
 			r.HTML(200, "history", tplMap)
 		}

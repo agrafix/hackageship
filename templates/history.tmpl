@@ -3,12 +3,11 @@
 <tr>
 	<th>#</th>
 	<th>Date</th>
-	<th>Repository</th>
 	<th>Package</th>
 	<th>Version</th>
 	<th>Status</th>
 </tr>
-{{ range .HistoryEntries }}
+{{ range .ships }}
 {{ template "history-entry" . }}
 <tr>
 	<td colspan="5">
